@@ -1,0 +1,15 @@
+# Secrets - never upload
+.env
+.env.*
+
+# Python files
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logs and temporary files
+*.log
+*.swp
+*.swo
+.DS_Store

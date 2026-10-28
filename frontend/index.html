@@ -1,0 +1,160 @@
+html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TaskFlow Pro</title>
+<style>
+:root { font-family: Arial, sans-serif; color: #182230; background: #f3f6fb; }
+* { box-sizing: border-box; }
+body { max-width: 900px; margin: 45px auto; padding: 0 18px; }
+header, .panel { background: white; border-radius: 16px; padding: 24px; margin-bottom: 18px; box-shadow: 0 5px 20px #172b4d0d; }
+h1 { margin: 0 0 8px; color: #155eef; }
+.muted { color: #667085; }
+form { display: flex; gap: 10px; }
+input, select, button { padding: 12px; border: 1px solid #d0d5dd; border-radius: 8px; font: inherit; }
+input { flex: 1; min-width: 0; }
+button { cursor: pointer; background: #155eef; color: white; border: 0; }
+button.delete { background: #b42318; }
+.task { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid #eaecf0; }
+.task:last-child { border-bottom: 0; }
+.task-title { flex: 1; overflow-wrap: anywhere; }
+.task select { max-width: 150px; background: white; }
+#message { min-height: 24px; margin-top: 12px; }
+@media(max-width:600px) {
+  .task { align-items: stretch; flex-wrap: wrap; }
+  form { flex-wrap: wrap; }
+  form input { flex-basis: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>TaskFlow Pro</h1>
+  <p class="muted">A three-tier task manager powered by Docker, Flask and MySQL.</p>
+  <strong id="count">Loading tasks...</strong>
+</header>
+
+<section class="panel">
+  <h2>Add a task</h2>
+  <form id="task-form">
+    <input id="title" maxlength="200" placeholder="What needs to be done?" required>
+    <button type="submit">Add task</button>
+  </form>
+  <p id="message" role="status" aria-live="polite"></p>
+</section>
+
+<section class="panel">
+  <h2>Your tasks</h2>
+  <div id="tasks">Loading...</div>
+</section>
+
+<script>
+const list = document.getElementById("tasks");
+const message = document.getElementById("message");
+const count = document.getElementById("count");
+const statuses = ["Pending", "In Progress", "Completed"];
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+async function loadTasks() {
+  try {
+    const tasks = await api("/api/tasks");
+    count.textContent = `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
+    list.replaceChildren();
+
+    if (!tasks.length) {
+      list.textContent = "No tasks yet. Add your first task above.";
+      return;
+    }
+
+    for (const task of tasks) {
+      const row = document.createElement("div");
+      row.className = "task";
+
+      const title = document.createElement("span");
+      title.className = "task-title";
+      title.textContent = task.title;
+
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", `Status for ${task.title}`);
+
+      for (const status of statuses) {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = status;
+        option.selected = task.status === status;
+        select.appendChild(option);
+      }
+
+      select.addEventListener("change", async () => {
+        try {
+          await api(`/api/tasks/${task.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: select.value })
+          });
+          message.textContent = "Task status updated.";
+          await loadTasks();
+        } catch (error) {
+          message.textContent = error.message;
+        }
+      });
+
+      const remove = document.createElement("button");
+      remove.className = "delete";
+      remove.textContent = "Delete";
+
+      remove.addEventListener("click", async () => {
+        try {
+          await api(`/api/tasks/${task.id}`, { method: "DELETE" });
+          message.textContent = "Task deleted.";
+          await loadTasks();
+        } catch (error) {
+          message.textContent = error.message;
+        }
+      });
+
+      row.append(title, select, remove);
+      list.appendChild(row);
+    }
+  } catch (error) {
+    list.textContent = "Could not load tasks. Check that the services are running.";
+    message.textContent = error.message;
+  }
+}
+
+document.getElementById("task-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = document.getElementById("title");
+
+  try {
+    await api("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({ title: input.value })
+    });
+    input.value = "";
+    message.textContent = "Task created successfully.";
+    await loadTasks();
+  } catch (error) {
+    message.textContent = error.message;
+  }
+});
+
+loadTasks();
+</script>
+</body>
+</html>
+
